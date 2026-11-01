@@ -2,8 +2,8 @@
 
 **Pi 5 双 IMX219 采集 + 同步 + 推流/录制（Pi 端仓库）。**
 
-本仓库只包含树莓派端：双相机采集、P 环同步、JPEG/ZMQ 推流、无损录制、第一天基线。
-PC 端（SGBM/点云/ROS 2）是**另一个仓库** `(https://github.com/zmmmawzfl/pi5-stereo-perception-host)`，两者通过 ZMQ + `SDP1` 协议通信。
+本仓库只包含树莓派端：双相机采集、P 环同步、JPEG/ZMQ 推流、无损录制，以及第一天基线。
+PC 端（SGBM/点云/ROS 2）位于**另一个仓库**：[pi5-stereo-perception-host](https://github.com/zmmmawzfl/pi5-stereo-perception-host)。两端通过 ZMQ + `SDP1` 协议通信。
 
 ## 当前状态
 
