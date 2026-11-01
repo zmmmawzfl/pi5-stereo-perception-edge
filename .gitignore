@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+runs/
+data/recordings/
+data/calib/*.npz
+.DS_Store
