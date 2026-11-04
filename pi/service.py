@@ -34,7 +34,7 @@ class PiService:
             if cfg.sync.enabled
             else None
         )
-        self.stats = {"frames": 0, "pairs": 0, "skew_ms": [], "periods_us": []}
+        self.stats = {"frames": 0, "pairs": 0, "dropped": 0, "skew_ms": [], "periods_us": []}
         self._stop = False
 
     # ------------------------------------------------------------------ #
@@ -44,18 +44,26 @@ class PiService:
         last_report = t_start
         try:
             while not self._stop:
-                pair = self.backend.read()
+                pair = self.backend.read(strict=False)
                 if pair is None:
                     break
-                self.publisher.publish(pair)
-                self.stats["pairs"] += 1
-                self.stats["frames"] += 2
                 self.stats["skew_ms"].append(pair.ts_diff_ns / 1e6)
 
                 if self.ctl is not None:
                     period = self.ctl.update(pair.ts_left_ns, pair.ts_right_ns)
                     self.backend.set_slave_frame_duration(period)
                     self.stats["periods_us"].append(period)
+
+                if not pair.skew_ok:
+                    # 坏对不发布，但它的时间戳已经喂给同步环；等环收敛后再计数。
+                    self.stats["dropped"] += 1
+                    if duration_s is not None and time.time() - t_start >= duration_s:
+                        break
+                    continue
+
+                self.publisher.publish(pair)
+                self.stats["pairs"] += 1
+                self.stats["frames"] += 2
 
                 if max_frames is not None and self.stats["pairs"] >= max_frames:
                     break
@@ -80,6 +88,7 @@ class PiService:
         report = {
             "pairs": self.stats["pairs"],
             "frames": self.stats["frames"],
+            "dropped": self.stats["dropped"],
             "skew_ms": summarize(self.stats["skew_ms"]),
             "period_us": summarize(self.stats["periods_us"]),
             "publisher": self.publisher.stats.as_dict() if hasattr(self.publisher, "stats") else {},

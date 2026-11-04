@@ -20,7 +20,7 @@ echo performance | sudo tee /sys/devices/system/cpu/cpufreq/policy0/scaling_gove
 `/boot/firmware/config.txt` 中双 IMX219 的典型写法（Pi 5 两个 CSI 口）：
 
 ```ini
-camera_auto_detect=0
+camera_auto_detect=1
 dtoverlay=imx219,cam0
 dtoverlay=imx219,cam1
 ```

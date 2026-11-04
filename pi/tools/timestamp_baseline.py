@@ -44,10 +44,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     diffs_ms = []
     periods = []
+    bad_pairs = 0
     try:
         for i in range(args.frames):
-            pair = backend.read()
+            # 第一天基线要看到“未同步”的真实分布，不能因为超过门限就中断。
+            pair = backend.read(strict=False)
             diffs_ms.append(pair.ts_diff_ns / 1e6)
+            if not pair.skew_ok:
+                bad_pairs += 1
             if ctl is not None:
                 period = ctl.update(pair.ts_left_ns, pair.ts_right_ns)
                 backend.set_slave_frame_duration(period)
@@ -78,6 +82,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             "kp": args.kp if ctl else None,
             "ts_diff_ms": stats,
             "iqr_ms": iqr,
+            "bad_pairs": bad_pairs,
             "periods_us": periods[-10:],
             "per_frame_ms": diffs_ms,
         },

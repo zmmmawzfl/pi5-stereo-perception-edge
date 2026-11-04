@@ -38,7 +38,8 @@ class Picamera2Backend:
         left_index: int = 0,
         right_index: int = 1,
         max_skew_ms: Optional[float] = None,
-        retries: int = 3,
+        retries: int = 10,
+        warmup_frames: int = 8,
     ) -> None:
         self.width = width
         self.height = height
@@ -48,6 +49,7 @@ class Picamera2Backend:
         self.right_index = right_index
         self.max_skew_ms = max_skew_ms if max_skew_ms is not None else 0.75 * 1000.0 / fps
         self.retries = int(retries)
+        self.warmup_frames = int(warmup_frames)
         self._left: Any = None
         self._right: Any = None
         self._seq = 0
@@ -65,6 +67,10 @@ class Picamera2Backend:
 
         self._left = self._open(Picamera2, self.left_index, "left")
         self._right = self._open(Picamera2, self.right_index, "right")
+        # 两台相机不是同时 start 的，直接取第一对会带 1~2 帧的启动相位差；
+        # 这里先丢弃若干对，让 AE/帧周期进入稳态，避免服务刚启动就 FrameSkewError。
+        for _ in range(max(0, self.warmup_frames)):
+            self._grab_once()
 
     def _open(self, Picamera2, index: int, side: str):
         cam = Picamera2(index)
@@ -87,21 +93,31 @@ class Picamera2Backend:
         return cam
 
     # ------------------------------------------------------------------ #
-    def read(self) -> CapturedPair:
+    def read(self, strict: bool = True) -> CapturedPair:
         if self._left is None or self._right is None:
             self.start()
+        last_pair: Optional[CapturedPair] = None
         last_skew = 0.0
-        for _ in range(self.retries):
+        attempts = self.retries if strict else 1
+        for _ in range(attempts):
             pair = self._grab_once()
+            last_pair = pair
             last_skew = abs(pair.ts_diff_ns) / 1e6
-            if last_skew <= self.max_skew_ms:
+            pair.skew_ok = last_skew <= self.max_skew_ms
+            if pair.skew_ok:
                 pair.seq = self._seq
                 self._seq += 1
                 return pair
-        raise FrameSkewError(
-            f"左右帧时间戳差 {last_skew:.2f} ms 超过上限 {self.max_skew_ms:.2f} ms；"
-            "请检查同步环、USB/CSI 带宽与散热降频"
-        )
+        if strict or last_pair is None:
+            raise FrameSkewError(
+                f"左右帧时间戳差 {last_skew:.2f} ms 超过上限 {self.max_skew_ms:.2f} ms；"
+                "请检查同步环、USB/CSI 带宽与散热降频"
+            )
+        # 非严格模式：把坏对交给服务，服务仍用它的时间戳驱动同步环，
+        # 但不发布/录制；这样初始相位差大于门限时同步环才有机会收敛。
+        last_pair.seq = self._seq
+        self._seq += 1
+        return last_pair
 
     def _grab_once(self) -> CapturedPair:
         assert self._left is not None and self._right is not None

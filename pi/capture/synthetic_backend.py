@@ -54,7 +54,7 @@ class SyntheticBackend:
             self._render = self._scene.render(seed=1)
         self._started = True
 
-    def read(self) -> CapturedPair:
+    def read(self, strict: bool = True) -> CapturedPair:
         if not self._started:
             self.start()
         assert self._render is not None
@@ -99,7 +99,7 @@ class ReplayBackend:
     def start(self) -> None:
         self._iter = iter(self._replay)
 
-    def read(self) -> CapturedPair:
+    def read(self, strict: bool = True) -> CapturedPair:
         if self._iter is None:
             self.start()
         assert self._iter is not None

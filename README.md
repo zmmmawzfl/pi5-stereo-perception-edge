@@ -8,8 +8,11 @@ PC 端（SGBM/点云/ROS 2）位于**另一个仓库**：[pi5-stereo-perception-
 ## 当前状态
 
 - 本仓库 **20 个单元测试**通过（sanitized 后的 Pi 子集：消息协议 + 同步控制环）。
-- 相机尚未到货：`Picamera2Backend` 代码已写，但**未实测**；`SyntheticBackend`/`ReplayBackend` 可用。
-- 时间戳基线、同步 P 环、ZMQ PUB、录制工具已实现；运动抖动/曝光同步仍需实机验证。
+- **两块 IMX219 已连接并实测**：枚举、单相机出图、Picamera2 双实例 640×480 采集都通过；
+  但相机还没有刚性固定，标定/尺度/运动同步仍未验收。详见
+  [docs/camera_check.md](docs/camera_check.md)。
+- 未加控制的初始时间戳差约 **52.8 ms**（约 1.6 帧）；P 环 200 帧可压到 **~0.6 ms**，
+  收敛约 5–7 s。服务启动阶段会丢弃尚未对齐的帧。
 - PC 端的 SGBM/点云/ROS 2 **不在本仓库**，不要在这里跑。
 
 ## 目录
@@ -25,7 +28,7 @@ raspberry-pi/
 ├── shared/               # SDP1 消息、配置、统计、合成场景、录制格式
 ├── configs/              # default / pi
 ├── tests/                # 20 个 Pi 侧 unittest
-└── docs/                 # 第一天、接口、联调
+└── docs/                 # 第一天、接口、联调、相机检查
 ```
 
 ## 快速开始（无需相机）
@@ -43,13 +46,17 @@ python3 -m venv --system-site-packages .venv
 .venv/bin/python -m pi.tools.record_pairs --backend synthetic --frames 6 --out data/recordings/synth6
 ```
 
-相机到货后：
+相机已连接；**先做刚性固定/调焦（计划 2026-11-05），再跑基线**：
 
 ```bash
 rpicam-hello --list-cameras          # 必须看到两个 imx219
+rpicam-still --camera 0 --width 640 --height 480 --nopreview -t 500 -o /tmp/cam0.jpg
+rpicam-still --camera 1 --width 640 --height 480 --nopreview -t 500 -o /tmp/cam1.jpg
 python -m pi.tools.timestamp_baseline --frames 100 --out runs/day1_raw.json
 python -m pi.service --config configs/pi.yaml
 ```
+
+固定前只验证“能出图/能配对”，不要采标定板；当前 `cam1` 还需要调焦。
 
 PC 端接收（在另一个仓库/机器）：
 
