@@ -13,4 +13,5 @@ sync:
 stream:
   transport: zmq
   endpoint: tcp://0.0.0.0:5555
+  encoding: jpeg           # jpeg | raw_bgr8
   jpeg_quality: 90

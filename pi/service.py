@@ -100,6 +100,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="Pi 5 双目采集 + 同步 + 推流服务")
     ap.add_argument("--config", default=None)
     ap.add_argument("--backend", default=None, choices=["auto", "picamera2", "synthetic", "replay"])
+    ap.add_argument("--encoding", default=None, choices=["jpeg", "raw_bgr8"],
+                    help="视频载荷编码；raw_bgr8 用于链路评估/无损调试")
     ap.add_argument("--replay-root", default=None)
     ap.add_argument("--record-root", default=None, help="无损落盘目录（PNG）")
     ap.add_argument("--frames", type=int, default=None)
@@ -116,6 +118,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         overrides["sync.enabled"] = False
     if args.no_stream:
         overrides["stream.transport"] = "none"
+    if args.encoding:
+        overrides["stream.encoding"] = args.encoding
     cfg = load_config(args.config, overrides)
 
     svc = PiService(cfg, record_root=args.record_root, replay_root=args.replay_root)

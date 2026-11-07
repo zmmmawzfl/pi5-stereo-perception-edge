@@ -38,7 +38,7 @@ flowchart LR
         L[IMX219 / cam0] --> CAP[Picamera2 双实例<br/>640×480 · 30 fps]
         R[IMX219 / cam1] --> CAP
         CAP --> SYNC[PhaseLockController<br/>FrameDurationLimits]
-        SYNC --> PUB[ZMQ PUB :5555<br/>SDP1 + JPEG + timestamps]
+        SYNC --> PUB[ZMQ PUB :5555<br/>SDP1 + JPEG/raw + timestamps]
     end
 
     subgraph Host["macOS / PC · Host 仓库"]
@@ -59,7 +59,7 @@ flowchart LR
 - **双 IMX219 采集**：Picamera2 两个实例，`buffer_count>=3`，640×480@30 fps；
 - **时间戳同步**：P 控制环微调从动相机帧周期，不需要外部触发线；
 - **配对与重组**：`pair_id` + 左右 `SensorTimestamp`，Host 端按 id 重组；
-- **ZMQ 推流**：JPEG 帧 + JSON header，帧端口 `5555`，时间戳旁路 `5556`；
+- **ZMQ 推流**：默认 JPEG 帧 + JSON header（可切 `raw_bgr8`），帧端口 `5555`，时间戳旁路 `5556`；
 - **无损录制**：PNG 序列 + `pairs.jsonl`，用于离线标定/复算；
 - **第一天基线**：时间戳差中位数/IQR、P 环前后对比、坏对统计；
 - **合成/回放后端**：没有相机也能跑通采集、配对、推流、统计链路。
@@ -188,7 +188,7 @@ MAGIC "SDP1" | header_len: uint32 LE | header: JSON | payload: JPEG/raw
 | `pair_id` | 左右帧的配对键，绝不按到达顺序拼 |
 | `left.sensor_ts_ns` / `right.sensor_ts_ns` | 两台相机的 `SensorTimestamp` |
 | `seq` | 本端采集序号 |
-| `width` / `height` / `format` | 图像元数据 |
+| `width` / `height` / `enc` | 图像尺寸与实际载荷编码 |
 
 端口：帧 `5555`，时间戳旁路 `5556`。完整契约见 [docs/interfaces.md](docs/interfaces.md)。
 
@@ -229,7 +229,7 @@ raspberry-pi/
 - 相机未刚性固定，基线长度未知，标定结果不可复现；
 - `cam1` 当前失焦，需要先调镜头；
 - P 环只对齐**时间戳**，不保证曝光起始时刻完全一致；
-- 推流目前是 JPEG over ZMQ，不是 H.264/WebRTC；压缩伪影需在 Host 端量化；
+- 推流默认 JPEG over ZMQ（可 `raw_bgr8`），不是 H.264/WebRTC；压缩伪影需在 Host 端量化；
 - 未做长时间满载、散热降频、千兆网吞吐测试。
 
 **路线图**
@@ -253,5 +253,7 @@ raspberry-pi/
 ## 12. 说明
 
 - 本仓库是**边缘采集端**，不要在 Pi 上跑 SGBM/点云；
+- 640×640 不是 IMX219 原生模式；raw BGR 30fps 约 590 Mbps，默认仍用 JPEG。
+  链路预算与建议见 Host 仓库 `docs/transport.md`。
 - `.venv` 是 Linux/aarch64 的，不要复制到 Mac；
 - 模型权重不在本仓库；Host 端的模型许可见其 README。

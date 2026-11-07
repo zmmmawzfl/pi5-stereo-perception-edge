@@ -1,13 +1,14 @@
 """推流 + 时间戳旁路。
 
 本模块发的是"帧 + 元数据"的 ZMQ PUB 通道：
-  * 视频帧用 JPEG（可调质量），低延迟、实现简单；
+  * 视频帧默认 JPEG（可调质量），也可 ``raw_bgr8`` 做无损旁路；
   * 每帧 header 里带 SensorTimestamp 与 pair_id，配对不依赖到达顺序；
   * 另开一个 meta PUB，只发 ``{pair_id, ts_L, ts_R, skew_ms}``，便于 PC 端
     单独监控同步质量，也方便将来换成 rpi-webrtc-streamer 时把时间戳旁路
     接到 WebRTC 数据通道。
 
-生产环境若要 H.264 硬/软编码 + WebRTC，用 rpi-webrtc-streamer 推视频，
+raw_bgr8 的带宽约 442 Mbps@640×480@30fps / 590 Mbps@640×640@30fps，
+只建议直连千兆时评估；生产环境若要 H.264 硬/软编码 + WebRTC，用 rpi-webrtc-streamer 推视频，
 时间戳仍走这里的 meta 通道；ZMQ 的 JPEG 通道作为调试/备用链路。
 """
 from __future__ import annotations
@@ -49,6 +50,19 @@ def encode_jpeg(img: np.ndarray, quality: int) -> bytes:
     return buf.tobytes()
 
 
+def encode_image(img: np.ndarray, encoding: str, jpeg_quality: int = 90) -> bytes:
+    """把 BGR 帧编码成线格式载荷。raw_bgr8 不做压缩，只保证连续内存。"""
+    enc = str(encoding).lower()
+    if enc == "jpeg":
+        return encode_jpeg(img, jpeg_quality)
+    if enc == "raw_bgr8":
+        arr = np.ascontiguousarray(img, dtype=np.uint8)
+        if arr.ndim != 3 or arr.shape[2] != 3:
+            raise ValueError(f"raw_bgr8 需要 HxWx3 BGR，收到 {arr.shape}")
+        return arr.tobytes()
+    raise ValueError(f"不支持的 stream.encoding: {encoding!r}")
+
+
 class NullPublisher:
     def __init__(self) -> None:
         self.stats = PublishStats()
@@ -65,6 +79,7 @@ class ZmqPublisher:
         self,
         endpoint: str,
         jpeg_quality: int = 90,
+        encoding: str = "jpeg",
         hwm: int = 4,
         meta_endpoint: Optional[str] = None,
     ) -> None:
@@ -84,6 +99,7 @@ class ZmqPublisher:
             self.meta_sock.bind(meta_endpoint)
         self.endpoint = endpoint
         self.jpeg_quality = int(jpeg_quality)
+        self.encoding = str(encoding).lower()
         self.stats = PublishStats()
         self._wall_offset_ns = time.time_ns() - time.monotonic_ns()
 
@@ -93,7 +109,7 @@ class ZmqPublisher:
             ("left", pair.left, pair.ts_left_ns),
             ("right", pair.right, pair.ts_right_ns),
         ):
-            payload = encode_jpeg(img, self.jpeg_quality)
+            payload = encode_image(img, self.encoding, self.jpeg_quality)
             packet = make_packet(
                 pair_id=pair.pair_id,
                 seq=pair.seq,
@@ -101,7 +117,7 @@ class ZmqPublisher:
                 sensor_ts_ns=ts,
                 width=w,
                 height=h,
-                encoding="jpeg",
+                encoding=self.encoding,
                 payload=payload,
             )
             try:
@@ -119,7 +135,7 @@ class ZmqPublisher:
                 "ts_R": pair.ts_right_ns,
                 "skew_ms": pair.ts_diff_ns / 1e6,
                 "wall_ns": time.time_ns(),
-                "encoding": "jpeg",
+                "encoding": self.encoding,
             }
             try:
                 self.meta_sock.send_string(json.dumps(meta), flags=self.zmq.NOBLOCK)
@@ -170,7 +186,9 @@ def build_publisher(cfg: StreamConfig, record_root: Optional[str] = None):
         meta = None
         if cfg.endpoint.startswith("tcp://") and cfg.endpoint.rsplit(":", 1)[-1] == "5555":
             meta = cfg.endpoint.rsplit(":", 1)[0] + ":5556"
-        pub = ZmqPublisher(cfg.endpoint, cfg.jpeg_quality, meta_endpoint=meta)
+        pub = ZmqPublisher(
+            cfg.endpoint, cfg.jpeg_quality, encoding=cfg.encoding, meta_endpoint=meta
+        )
     elif transport in ("none", ""):
         pub = NullPublisher()
     else:
