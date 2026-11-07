@@ -73,7 +73,7 @@ flowchart LR
 | 双实例同时采集 | ✅ 实测 | `Picamera2Backend` 连续采集成对 |
 | 时间戳 P 环 | ✅ 实测 | 未控制 52.8 ms → 200 帧后 ~0.56 ms |
 | ZMQ 推流 / 录制 | ⚠️ 代码 + 回环验证 | 实机推流吞吐/热稳定性待测 |
-| 刚性固定 / 基线 | ❌ 待做 | 当前只是插上，未做支架 |
+| 刚性固定 / 基线 | 🟡 模型已给 | `hardware/` 有 60/80/100 mm STL；待打印、装配、标定 |
 | 真实标定 | ❌ 待做 | 固定在 Host 端完成，本仓库只采图 |
 | 运动/曝光同步 | ❌ 未测 | 时间戳对齐 ≠ 曝光同步 |
 
@@ -88,7 +88,7 @@ flowchart LR
 | 项 | 建议 |
 |---|---|
 | 主机 | Raspberry Pi 5，8 GB 优先（4 GB 推流时余量偏紧） |
-| 相机 | 2× IMX219，CSI 排线注意 cam0/cam1 方向 |
+| 相机 | 2× IMX219，CSI 排线注意 cam0/cam1 方向；支架见 [hardware/README.md](hardware/README.md) |
 | 电源 | 官方 27 W USB-C PD |
 | 散热 | 主动风扇 + 散热片（采集 + 编码会持续占 CPU） |
 | 系统 | Raspberry Pi OS 64-bit Bookworm |
@@ -204,6 +204,7 @@ raspberry-pi/
 │   └── tools/          # 时间戳基线、录制工具
 ├── shared/             # SDP1、配置、统计、合成场景、录制格式
 ├── configs/            # default / pi
+├── hardware/           # 参数化双目支架 + 60/80/100 mm STL
 ├── tests/              # 20 个 Pi 侧 unittest
 └── docs/               # 第一天、接口、联调、相机检查
 ```
@@ -247,6 +248,7 @@ raspberry-pi/
 | 第一天实机清单 | [docs/day1.md](docs/day1.md) |
 | 相机检查记录 | [docs/camera_check.md](docs/camera_check.md) |
 | 协议/坐标约定 | [docs/interfaces.md](docs/interfaces.md) |
+| 双目支架/基线选择 | [hardware/README.md](hardware/README.md) |
 | Pi↔PC 联调排障 | [docs/runbook.md](docs/runbook.md) |
 | Host 端（SGBM/点云/ROS 2） | [pi5-stereo-perception-host](https://github.com/zmmmawzfl/pi5-stereo-perception-host) |
 
