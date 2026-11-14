@@ -10,6 +10,7 @@ from typing import Optional
 
 from pi.capture.base import CapturedPair
 from pi.capture.factory import build_backend
+from pi.diagnostics import decode_throttled, read_throttled
 from pi.stream.publisher import build_publisher
 from pi.sync.p_controller import PhaseLockController
 from shared.config import AppConfig, config_to_dict, load_config
@@ -35,11 +36,29 @@ class PiService:
             else None
         )
         self.stats = {"frames": 0, "pairs": 0, "dropped": 0, "skew_ms": [], "periods_us": []}
+        # 电源/降频状态：树莓派 5 供电不足时会掉压降频甚至关机，记下来便于归因。
+        self.power = {"throttled": None, "labels": []}
         self._stop = False
 
     # ------------------------------------------------------------------ #
+    def check_power(self) -> None:
+        """采样 vcgencmd get_throttled；新出现的告警位打印一次。"""
+        bits = read_throttled()
+        if bits is None:
+            return
+        self.power["throttled"] = f"0x{bits:x}"
+        for label in decode_throttled(bits):
+            if label in self.power["labels"]:
+                continue
+            self.power["labels"].append(label)
+            print(
+                f"[pi] 电源/降频警告: {label}（get_throttled={self.power['throttled']}）",
+                flush=True,
+            )
+
     def run(self, max_frames: Optional[int] = None, duration_s: Optional[float] = None) -> dict:
         self.backend.start()
+        self.check_power()
         t_start = time.time()
         last_report = t_start
         try:
@@ -72,6 +91,7 @@ class PiService:
                     break
                 if now - last_report >= 5.0:
                     last_report = now
+                    self.check_power()
                     elapsed = now - t_start
                     print(
                         f"[pi] {self.stats['pairs']} 对 / {elapsed:.1f}s "
@@ -92,6 +112,7 @@ class PiService:
             "skew_ms": summarize(self.stats["skew_ms"]),
             "period_us": summarize(self.stats["periods_us"]),
             "publisher": self.publisher.stats.as_dict() if hasattr(self.publisher, "stats") else {},
+            "power": dict(self.power),
         }
         return report
 
