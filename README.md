@@ -247,6 +247,7 @@ raspberry-pi/
 |---|---|
 | 第一天实机清单 | [docs/day1.md](docs/day1.md) |
 | 相机检查记录 | [docs/camera_check.md](docs/camera_check.md) |
+| H.264 CPU 实测 | [docs/h264_cpu.md](docs/h264_cpu.md) |
 | 协议/坐标约定 | [docs/interfaces.md](docs/interfaces.md) |
 | 双目支架/基线选择 | [hardware/README.md](hardware/README.md) |
 | Pi↔PC 联调排障 | [docs/runbook.md](docs/runbook.md) |
