@@ -42,6 +42,7 @@ def build_backend(cfg: AppConfig, replay_root: Optional[str] = None) -> CameraBa
             width=cfg.camera.width,
             height=cfg.camera.height,
             fps=cfg.camera.fps,
+            realtime=True,  # 服务模式下按真实帧率出帧，skew/丢帧统计才有意义
             **scene_kwargs,
         )
 

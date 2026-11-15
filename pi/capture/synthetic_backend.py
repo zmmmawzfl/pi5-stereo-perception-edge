@@ -31,6 +31,7 @@ class SyntheticBackend:
         initial_offset_ms: float = 6.0,
         seed: int = 0,
         scene: Optional[SyntheticScene] = None,
+        realtime: bool = True,
     ) -> None:
         self.width = width
         self.height = height
@@ -47,6 +48,10 @@ class SyntheticBackend:
         self._t_slave = self._t_master + self.initial_offset_ms * 1e6
         self._seq = 0
         self._started = False
+        # 真实相机 read() 是按帧率阻塞的；不阻塞会让上层（配对、推流队列、skew 统计）
+        # 在 2000+ fps 的假数据上得到毫无意义的结论。测试里可以显式关掉。
+        self.realtime = bool(realtime)
+        self._deadline: Optional[float] = None
 
     # ------------------------------------------------------------------ #
     def start(self) -> None:
@@ -58,6 +63,7 @@ class SyntheticBackend:
         if not self._started:
             self.start()
         assert self._render is not None
+        self._pace()
         # 每帧独立抖动：真实 SensorTimestamp 也有 ~0.1ms 量级的抖动
         self._t_master += self.master_period_us * 1000.0 + self._rng.normal(
             0.0, self.jitter_us * 1000.0
@@ -74,6 +80,20 @@ class SyntheticBackend:
         )
         self._seq += 1
         return pair
+
+    def _pace(self) -> None:
+        """按主相机周期阻塞，模拟真实相机的 ~fps 出帧节奏。"""
+        if not self.realtime:
+            return
+        now = time.monotonic()
+        period_s = self.master_period_us / 1e6
+        # 落后超过 0.5 s 说明被暂停过（调试/断点），重新对齐，不补帧
+        if self._deadline is None or self._deadline < now - 0.5:
+            self._deadline = now
+        self._deadline += period_s
+        delay = self._deadline - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
 
     def set_slave_frame_duration(self, period_us: int) -> None:
         self.slave_period_us = float(period_us)

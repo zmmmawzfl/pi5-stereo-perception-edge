@@ -183,6 +183,9 @@ python -m pc.receive.record_pairs \
 - 统计 JSON 里的 `power` 字段来自 `vcgencmd get_throttled`：出现欠压/降频会在 stderr 打印一行告警，
   掉帧排查时先看它——**供电不足会直接表现成 skew 变大、帧率下降甚至整机掉电**。
 
+`--backend synthetic` 也按 `camera.fps` **阻塞出帧**（`SyntheticBackend(realtime=True)`），
+所以没有相机时跑出来的 fps/skew/丢帧统计同样是可信的；单元测试里可以传 `realtime=False` 关掉。
+
 ## 7. 数据协议
 
 ```text
