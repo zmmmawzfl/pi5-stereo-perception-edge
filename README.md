@@ -175,6 +175,14 @@ python -m pc.receive.record_pairs \
 
 服务启动阶段会丢弃尚未对齐的帧（`dropped`），等 P 环收敛后开始稳定出对。
 
+两条与“归因”有关的实现细节：
+
+- **推流默认在工作线程里编码+发送**（`stream.publish_threaded: true`，队列 `publish_queue: 2`）。
+  队列满时丢**最旧**的待发帧、保留最新的，采集循环不会被 900 KiB/帧的 raw 拖慢；
+  想回到同步发送（便于逐帧调试）就设 `stream.publish_threaded: false`；
+- 统计 JSON 里的 `power` 字段来自 `vcgencmd get_throttled`：出现欠压/降频会在 stderr 打印一行告警，
+  掉帧排查时先看它——**供电不足会直接表现成 skew 变大、帧率下降甚至整机掉电**。
+
 ## 7. 数据协议
 
 ```text
@@ -205,7 +213,7 @@ raspberry-pi/
 ├── shared/             # SDP1、配置、统计、合成场景、录制格式
 ├── configs/            # default / pi
 ├── hardware/           # 参数化双目支架 + 60/80/100 mm STL
-├── tests/              # 27 个 Pi 侧 unittest
+├── tests/              # 31 个 Pi 侧 unittest
 └── docs/               # 第一天、接口、联调、相机检查
 ```
 
@@ -246,6 +254,9 @@ raspberry-pi/
 - 推流默认 JPEG over ZMQ（可 `raw_bgr8`），不是 H.264/WebRTC；压缩伪影需在 Host 端量化；
 - **供电不足**：当前 10 W 电源，`get_throttled=0x50000`，2026-11-14 满载测试时整机掉电一次；
   换 27 W（5.1 V/5 A）电源前不要做长时间满载测试；
+- **相机探测失败（2026-11-15）**：掉电重启后两路 IMX219 都报
+  `imx219 10-0010: Error reading reg 0x0000: -121` / `probe with driver imx219 failed`，
+  `rpicam-hello --list-cameras` 显示 No cameras available → 先重插 CSI 排线、再换 27 W 电源重启排查；
 - 千兆吞吐已测（943 Mbps），但 raw_bgr8 的采集侧拷贝仍是瓶颈；长时间满载/散热降频未测。
 
 **路线图**

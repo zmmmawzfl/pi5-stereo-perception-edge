@@ -14,6 +14,8 @@ raw_bgr8 的带宽约 442 Mbps@640×480@30fps / 590 Mbps@640×640@30fps，
 from __future__ import annotations
 
 import json
+import queue
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Dict, Optional
@@ -148,6 +150,80 @@ class ZmqPublisher:
             self.meta_sock.close(0)
 
 
+class ThreadedPublisher:
+    """把编码 + 发送挪到后台线程，采集循环只做一次入队。
+
+    为什么要它：publish() 里 `encode_image` 与 ZMQ `send_multipart` 都是同步的，
+    raw_bgr8 每对要搬 2 × 900 KiB，采集循环被拖慢后相机缓冲积压，左目拿到的是旧帧，
+    实测左右时间戳差从 jpeg 的 0.2 ms 涨到 14.9 ms。解耦后采集节奏由相机决定。
+
+    队列满时丢**最旧**的待发帧、保留最新的：宁可少发一帧，也不要发过时的帧。
+    """
+
+    def __init__(self, inner, queue_size: int = 2) -> None:
+        self.inner = inner
+        self.queue_size = max(1, int(queue_size))
+        self._q: "queue.Queue" = queue.Queue(maxsize=self.queue_size)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="pi-publisher", daemon=True)
+        self.stats = PublishStats()
+        self.last_error: Optional[str] = None
+        self._thread.start()
+
+    # ------------------------------------------------------------------ #
+    def publish(self, pair: CapturedPair) -> None:
+        if self._stop.is_set():
+            self.stats.dropped += 1
+            return
+        if self._q.full():
+            # 丢最旧的，给最新的让位（同步环已经收敛，旧帧只会增加延迟）
+            try:
+                self._q.get_nowait()
+                self.stats.dropped += 1
+            except queue.Empty:  # pragma: no cover - 竞态兜底
+                pass
+        try:
+            self._q.put_nowait(pair)
+        except queue.Full:  # pragma: no cover - 竞态兜底
+            self.stats.dropped += 1
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                pair = self._q.get(timeout=0.05)
+            except queue.Empty:
+                continue
+            try:
+                self.inner.publish(pair)
+            except Exception as exc:  # noqa: BLE001 - 后台线程必须活着
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                self.stats.dropped += 1
+            self._sync_stats()
+
+    def _sync_stats(self) -> None:
+        inner = getattr(self.inner, "stats", None)
+        if inner is not None:
+            self.stats.published = inner.published
+            self.stats.bytes_sent = inner.bytes_sent
+            self.stats.dropped += 0  # 队列丢弃已在 publish() 里计数
+
+    def close(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=3.0)
+        # 收尾把队列里剩下的发完（最多 queue_size 帧）
+        while True:
+            try:
+                pair = self._q.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                self.inner.publish(pair)
+            except Exception:  # noqa: BLE001 - 关闭阶段的失败不影响退出
+                break
+            self._sync_stats()
+        self.inner.close()
+
+
 class FilePublisher:
     """无损落盘（PNG），用于压缩伪影量化与离线复算。"""
 
@@ -189,6 +265,9 @@ def build_publisher(cfg: StreamConfig, record_root: Optional[str] = None):
         pub = ZmqPublisher(
             cfg.endpoint, cfg.jpeg_quality, encoding=cfg.encoding, meta_endpoint=meta
         )
+        if cfg.publish_threaded:
+            # 只把网络这一路放到后台；落盘（record_root）仍同步，不丢帧
+            pub = ThreadedPublisher(pub, queue_size=cfg.publish_queue)
     elif transport in ("none", ""):
         pub = NullPublisher()
     else:

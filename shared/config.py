@@ -49,6 +49,9 @@ class StreamConfig:
     # 无损帧旁路（用于压缩伪影量化）
     raw_max_pairs: int = 0
     h264_bitrate_kbps: int = 2500
+    # 编码+发送是否放到后台线程（raw_bgr8 每对 1.8 MB，同步发会拖慢采集循环）
+    publish_threaded: bool = True
+    publish_queue: int = 2
 
     def __post_init__(self) -> None:
         self.encoding = str(self.encoding).lower()
@@ -58,6 +61,8 @@ class StreamConfig:
             )
         if not 1 <= int(self.jpeg_quality) <= 100:
             raise ValueError("stream.jpeg_quality 必须在 1..100")
+        self.publish_threaded = bool(self.publish_threaded)
+        self.publish_queue = max(1, int(self.publish_queue))
 
 
 @dataclass
