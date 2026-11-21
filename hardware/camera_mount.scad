@@ -20,7 +20,7 @@ standoff_h = 3.2;       // PCB 背面与立板的架空高度：必须 > FPC 座
 boss_d = 6.5;           // 立柱外径（M2 盘头约 3.8，留支撑面）
 pilot_d = 1.9;          // M2 自攻底孔（仅 screw_mode=0；拧塑料 1.8–1.9）
 pilot_into = 4.0;       // 自攻底孔深度（仅 screw_mode=0；立板 6，背面留 2.0）
-pilot_slot = 1.6;       // 孔沿 X 的长圆孔行程，13.0–13.6 孔距都能装
+pilot_slot = 1.2;       // 立板内长圆孔沿 X 的行程（±0.6），13.0–13.6 孔距都能装
 screw_mode = 1;         // 1 = M2 机牙 + 背面六角螺母（默认）；0 = M2 自攻拧塑料
 nut_af = 4.3;           // 六角螺母**对边**间隙：ISO 4032 M2 对边 4.0 + 0.3（不要填对角 4.6！）
 nut_h = 1.9;            // 螺母槽深 = 螺母厚 1.6 + 0.3
@@ -50,7 +50,8 @@ plate_z1 = plate_z0 + plate_h;
 board_cz = lens_z - lens_dz;
 hole_y = standoff_h;    // 通孔起点：立柱顶面 == PCB 背面
 nut_d = nut_af / cos(30);  // OpenSCAD 的 $fn=6 圆柱直径是**对角**，所以由对边换算
-screw_clear_d = 2.4;    // M2 通孔（ISO 273 中等间隙）
+screw_clear_d = 2.4;    // M2 过孔（ISO 273 中等间隙），开在立板里
+boss_bore_d = 2.8;      // 立柱内的圆孔：比过孔大 0.4，让螺钉歪一点也穿得过；PCB 面仍是完整支撑环
 tee_apex = sqrt(2) * screw_clear_d / 2;  // 泪滴顶点离孔心高度：切线正好 45°
 
 // 一颗螺丝的孔：默认机牙通孔 + 背面六角螺母槽（沿 X 做成 1.6mm 长圆孔，容忍 13.0–13.6 孔距）
@@ -63,15 +64,19 @@ module screw_hole(x, z) {
                         cylinder(h = standoff_h + pilot_into, d = pilot_d);
         }
     } else {
-        // 机牙：Ø2.4 通孔（顶部 45° 泪滴）+ 背面六角螺母槽
+        // 立柱内：Ø2.8 圆孔——PCB 面留完整的 Ø6.5 支撑环，螺钉头压板时板不会陷进长圆孔里
+        translate([x, 0, z])
+            rotate([-90, 0, 0])
+                cylinder(h = standoff_h + 0.05, d = boss_bore_d);
+        // 立板内：Ø2.4 长圆孔（只在立板里开，吃 13.0–13.6 孔距公差），顶部 45° 泪滴
         hull() {
             for (o = [-pilot_slot / 2, pilot_slot / 2])
                 translate([x + o, -plate_t - 1, z])
                     rotate([-90, 0, 0])
-                        cylinder(h = standoff_h + plate_t + 2, d = screw_clear_d);
+                        cylinder(h = plate_t + 1.05, d = screw_clear_d);
             if (nut_bridge == 1)
                 translate([x, -plate_t - 1, z + tee_apex - 0.005])
-                    cube([0.01, standoff_h + plate_t + 2, 0.01]);
+                    cube([0.01, plate_t + 1.05, 0.01]);
         }
         // 六角螺母槽：从立板背面挖，深 nut_h（$fn=6 → 平顶朝上，正好贴床方向）
         translate([x, -plate_t, z])
