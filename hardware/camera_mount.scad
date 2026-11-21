@@ -1,7 +1,9 @@
 // 双目 IMX219 基线支架（参数化）
 // 单位：mm。默认按 24x25mm IMX219( DC-IMX219-V1 )板、13x21mm 孔距、1.2mm 板厚设计。
-// 摄像头由 4 个 Ø6.5 立柱架空 standoff_h，M2 自攻螺丝从正面穿过 PCB 拧进立柱盲孔；
+// 摄像头由 4 个 Ø6.5 立柱架空 standoff_h；M2 螺丝从正面穿过 PCB 与立柱，
+// 拧进立板背面的六角螺母（screw_mode=1，默认），螺母槽开在立板后面、PCB 装好后从背面塞入。
 // 架空层给背面 FPC 座让位，排线从板底直接下垂，不穿板、不压线。
+// 通孔是 Ø2.4 水平孔，顶部做了 45° 泪滴，避免 FDM 把孔顶拉塌成椭圆。
 // 打印前务必用卡尺量你手头的板：孔距、孔径、FPC 座高度、镜头中心偏移。
 // 基线 = 两个镜头中心距离，不是两块 PCB 边缘距离。
 
@@ -16,19 +18,20 @@ hole_dx = 13.25;        // 左右安装孔距（X）；实测 13.0 / 图纸 13.5
 hole_dy = 21;           // 上下安装孔距（Z）
 standoff_h = 3.2;       // PCB 背面与立板的架空高度：必须 > FPC 座高度 + 0.8（座通常 2–2.5）
 boss_d = 6.5;           // 立柱外径（M2 盘头约 3.8，留支撑面）
-pilot_d = 1.9;          // M2 自攻底孔（拧塑料 1.8–1.9；用机牙+螺母请把 screw_mode 改成 1）
-pilot_into = 4.0;       // 底孔拧进立板的深度（立板 7，背面留 3.0）
-pilot_slot = 1.6;       // 底孔 X 向长圆孔行程，13.0–13.6 孔距都能装
-screw_mode = 0;         // 0 = M2 自攻拧塑料；1 = M2 机牙 + 背面六角螺母
-nut_d = 5.6;            // 六角螺母对角间隙（M2 螺母对边 4.0；按你实测改）
-nut_h = 2.8;            // 螺母槽深（从立板背面挖）
+pilot_d = 1.9;          // M2 自攻底孔（仅 screw_mode=0；拧塑料 1.8–1.9）
+pilot_into = 4.0;       // 自攻底孔深度（仅 screw_mode=0；立板 6，背面留 2.0）
+pilot_slot = 1.6;       // 孔沿 X 的长圆孔行程，13.0–13.6 孔距都能装
+screw_mode = 1;         // 1 = M2 机牙 + 背面六角螺母（默认）；0 = M2 自攻拧塑料
+nut_af = 4.3;           // 六角螺母**对边**间隙：ISO 4032 M2 对边 4.0 + 0.3（不要填对角 4.6！）
+nut_h = 1.9;            // 螺母槽深 = 螺母厚 1.6 + 0.3
+nut_bridge = 1;         // 1 = 通孔顶部加 45° 泪滴，防止水平孔顶塌陷；0 = 纯圆孔（可钻）
 lens_dx = 0;            // 镜头中心相对板中心的 X 偏移
 lens_dz = 0;            // 镜头中心相对板中心的 Z 偏移
 
 /* [Mount] */
 plate_w = 34;           // 立板宽
 plate_h = 38;           // 立板高
-plate_t = 7;            // 立板厚（要给 M2 底孔留够 3mm 背墙）
+plate_t = 6;            // 立板厚：M2x10 刚好穿完 PCB+立柱+螺母；螺母槽后墙 4.05
 base_t = 8;             // 底板厚（含 1/4-20 螺母槽）
 base_depth = 38;        // 底板深
 base_margin = 8;        // 底板两端余量
@@ -45,9 +48,12 @@ base_len = plate_spacing + plate_w + 2 * base_margin;
 plate_z0 = base_t - 2;  // 与底板重叠 2mm，保证 union 后不脱开
 plate_z1 = plate_z0 + plate_h;
 board_cz = lens_z - lens_dz;
-hole_y = standoff_h;    // 螺纹孔的起点：立柱顶面 == PCB 背面
+hole_y = standoff_h;    // 通孔起点：立柱顶面 == PCB 背面
+nut_d = nut_af / cos(30);  // OpenSCAD 的 $fn=6 圆柱直径是**对角**，所以由对边换算
+screw_clear_d = 2.4;    // M2 通孔（ISO 273 中等间隙）
+tee_apex = sqrt(2) * screw_clear_d / 2;  // 泪滴顶点离孔心高度：切线正好 45°
 
-// 一颗螺丝的孔：默认 M2 自攻盲孔（沿 X 做成 1.6mm 长圆孔，容忍 13.0–13.6 孔距）
+// 一颗螺丝的孔：默认机牙通孔 + 背面六角螺母槽（沿 X 做成 1.6mm 长圆孔，容忍 13.0–13.6 孔距）
 module screw_hole(x, z) {
     if (screw_mode == 0) {
         hull() {
@@ -57,13 +63,17 @@ module screw_hole(x, z) {
                         cylinder(h = standoff_h + pilot_into, d = pilot_d);
         }
     } else {
-        // 机牙：Ø2.4 通孔 + 背面六角螺母槽
+        // 机牙：Ø2.4 通孔（顶部 45° 泪滴）+ 背面六角螺母槽
         hull() {
             for (o = [-pilot_slot / 2, pilot_slot / 2])
                 translate([x + o, -plate_t - 1, z])
                     rotate([-90, 0, 0])
-                        cylinder(h = standoff_h + plate_t + 2, d = 2.4);
+                        cylinder(h = standoff_h + plate_t + 2, d = screw_clear_d);
+            if (nut_bridge == 1)
+                translate([x, -plate_t - 1, z + tee_apex - 0.005])
+                    cube([0.01, standoff_h + plate_t + 2, 0.01]);
         }
+        // 六角螺母槽：从立板背面挖，深 nut_h（$fn=6 → 平顶朝上，正好贴床方向）
         translate([x, -plate_t, z])
             rotate([-90, 0, 0])
                 cylinder(h = nut_h + 0.05, d = nut_d, $fn = 6);
@@ -140,7 +150,7 @@ difference() {
 }
 
 echo(str("baseline = ", baseline, " mm, plate spacing = ", plate_spacing, " mm"));
-echo(str("PCB 架空 ", standoff_h, " mm，M2 ", screw_mode == 0 ? "自攻×8" : "机牙×10 + 螺母", "，孔距 ", hole_dx, "x", hole_dy));
-// 打印方向：底板贴床，立板朝上；螺纹孔轴水平。建议 0.2mm 层高、4 圈壁、40% 填充；
-// 螺纹孔附近用 6 圈壁并降速到 25mm/s，自攻牙才咬得住。
+echo(str("PCB 架空 ", standoff_h, " mm，M2 ", screw_mode == 0 ? "自攻×8" : str("机牙×10 + 六角螺母×8（对边 ", nut_af, "，深 ", nut_h, "）"), "，孔距 ", hole_dx, "x", hole_dy));
+// 打印方向：底板贴床，立板朝上；螺母槽开口朝后（-Y），不需要在腔里塞支撑。
+// 支撑只加在两处：8 个立柱的圆柱下表面、底板中间 1/4-20 螺母槽的顶（≥5mm 跨度）。
 // 材料：PETG 优于 PLA（抗蠕变、刚性更好）；不要用柔性材料。
