@@ -84,7 +84,13 @@ openscad -o stl/camera_mount_b80.stl -D baseline=80 camera_mount.scad
 
 ## 4. 夹紧结构（为什么是这样）
 
-![夹紧链：螺钉头 → PCB → 立柱 Ø6.5 环 → 立板 → 背面螺母](../docs/images/camera_mount_80_section.png)
+![一颗 M2 的剖面：① 螺钉头 ② PCB ③ 立柱环 ④ 立板 ⑤ 背面螺母；右下角是沿螺丝轴的叠图](../docs/images/camera_mount_80_section.png)
+
+**图怎么读**：右边是镜头那一面（正面、朝外），左边是背面（螺母埋在立板里）；灰色 = 钢、绿 = PCB、
+土黄（带斜线）= 打印件实心、纯白 = 空气。图上 ①–⑤ 对应下面的条目；底部尺寸链是这条夹紧链的厚度，
+**1.5 + 1.5 + 1.0 = 4.0 mm 就是螺钉头底面到立板面的距离**，M2×8 正好吃进螺母 1.45 mm。
+右下小图是沿螺丝轴看下去：立柱环 Ø6.5 的范围比那条 3.6 mm 长的孔大，压力才落在实心环上。
+重新生成：`python3 hardware/make_section_figure.py`（数值是手写常量，改设计要一起改）。
 
 一块板 4 颗螺钉，每颗的受力顺序是：
 
